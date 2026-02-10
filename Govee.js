@@ -1,12 +1,16 @@
 import udp from "@SignalRGB/udp";
 
+// REQUIRED so PluginCrawler doesn't treat this as invalid HID
+export function VendorId() { return 0; }
+export function ProductId() { return 0; }
+
 export function Name() { return "Govee"; }
 export function Version() { return "1.0.0"; }
 export function Type() { return "network"; }
 export function Publisher() { return "WhirlwindFX"; }
 
-// 36 Zonen als “Canvas-Breite” ist hier sinnvoll (statt 22).
-export function Size() { return [36, 1]; }
+// Wichtig: Nicht 0 oder 36 – wir wollen 114 LEDs im Canvas/Buffer
+export function Size() { return [114, 1]; }
 export function DefaultPosition() { return [75, 70]; }
 export function DefaultScale() { return 8.0; }
 
@@ -21,40 +25,57 @@ forcedColor:readonly
 
 export function ControllableParameters() {
 	return [
-		{ "property":"TurnOffOnShutdown", "group":"settings", "label":"Turn off on App Exit", "type":"boolean", "default":"false" },
-		{ "property":"LightingMode", "group":"lighting", "label":"Lighting Mode", "type":"combobox", "values":["Canvas", "Forced"], "default":"Canvas" },
-		{ "property":"forcedColor", "group":"lighting", "label":"Forced Color", "type":"color", "default":"#009bde" },
+		{"property":"TurnOffOnShutdown", "group":"settings", "label":"Turn off on App Exit", "type":"boolean", "default":"false"},
+		{"property":"LightingMode", "group":"lighting", "label":"Lighting Mode", "type":"combobox", "values":["Canvas", "Forced"], "default":"Canvas"},
+		{"property":"forcedColor", "group":"lighting", "label":"Forced Color", "type":"color", "default":"#009bde"},
 	];
 }
 
+// export bleibt false wie im Original – SignalRGB setzt es runtime per device.SetIsSubdeviceController(true)
 export function SubdeviceController() { return false; }
 
 /** @type {GoveeProtocol} */
 let govee;
-
-let ledCount = 4;
+let ledCount = 114;
 let ledNames = [];
 let ledPositions = [];
 let subdevices = [];
-
 let UDPServer;
 
+// -------------------- Helpers --------------------
+function safeLog(msg) {
+	// Im Device-Kontext gibt’s oft kein `service`
+	try {
+		if (typeof service !== "undefined" && service?.log) service.log(msg);
+		else device.log(msg);
+	} catch (e) {
+		// last resort
+		device.log(msg);
+	}
+}
+
+function hexToRgb(hex) {
+	const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+	if (!m) return [0, 0, 0];
+	return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+}
+
+// -------------------- Lifecycle --------------------
 export function Initialize(){
 	device.addFeature("base64");
 
 	device.setName(controller.sku);
 	device.setImageFromUrl(controller.deviceImage);
 
-	// Make sure we don't have a server floating around still.
-	if(UDPServer !== undefined) {
+	if (UDPServer !== undefined) {
 		UDPServer.stop();
 		UDPServer = undefined;
 	}
 
 	UDPServer = new UdpSocketServer({
-		ip : controller.ip,
-		broadcastPort : 4003,
-		listenPort : 4002
+		ip: controller.ip,
+		broadcastPort: 4003,
+		listenPort: 4002
 	});
 	UDPServer.start();
 
@@ -63,18 +84,20 @@ export function Initialize(){
 
 	govee = new GoveeProtocol(controller.ip, controller.supportDreamView, controller.supportRazer);
 
-	// “Handshake” wie im Original
+	// wie im Original (Wireshark-Reihenfolge)
 	govee.setDeviceState(true);
 	govee.SetRazerMode(true);
 	govee.SetRazerMode(true);
 	govee.setDeviceState(true);
+
+	safeLog(`Initialized. sku=${controller.sku} ip=${controller.ip} ledCount=${ledCount} subdevices=${subdevices.length}`);
 }
 
 export function Render(){
 	const RGBData = subdevices.length > 0 ? GetRGBFromSubdevices() : GetDeviceRGB();
 
-	// Debug optional
-	// device.log(`Render: subdevices=${subdevices.length} bytes=${RGBData.length}`);
+	// DEBUG: muss bei dir 342 sein (114*3)
+	device.log(`Render: subdevices=${subdevices.length} bytes=${RGBData.length}`);
 
 	govee.SendRGB(RGBData);
 	device.pause(10);
@@ -82,32 +105,28 @@ export function Render(){
 
 export function Shutdown(suspend){
 	govee.SetRazerMode(false);
-	if(TurnOffOnShutdown){
-		govee.setDeviceState(false);
-	}
+	if (TurnOffOnShutdown) govee.setDeviceState(false);
 }
 
 export function onvariableLedCountChanged(){
 	SetLedCount(variableLedCount);
 }
 
-// ===== FIX: correct buffer indexing across subdevices (sequential) =====
+// -------------------- RGB сбор --------------------
+// FIX: korrektes Buffer-Layout über mehrere Subdevices (nicht pro Subdevice bei 0 anfangen)
 function GetRGBFromSubdevices(){
 	const RGBData = [];
 	let o = 0;
 
-	for(const subdevice of subdevices){
+	for (const subdevice of subdevices) {
 		const positions = subdevice.ledPositions;
 
-		for(let i = 0; i < positions.length; i++){
+		for (let i = 0; i < positions.length; i++) {
 			const p = positions[i];
 			let color;
 
-			if (LightingMode === "Forced") {
-				color = hexToRgb(forcedColor);
-			} else {
-				color = device.subdeviceColor(subdevice.id, p[0], p[1]);
-			}
+			if (LightingMode === "Forced") color = hexToRgb(forcedColor);
+			else color = device.subdeviceColor(subdevice.id, p[0], p[1]);
 
 			RGBData[o++] = color[0];
 			RGBData[o++] = color[1];
@@ -121,17 +140,14 @@ function GetRGBFromSubdevices(){
 function GetDeviceRGB(){
 	const RGBData = new Array(ledCount * 3);
 
-	for(let i = 0 ; i < ledPositions.length; i++){
-		const ledPosition = ledPositions[i];
+	for (let i = 0; i < ledPositions.length; i++){
+		const p = ledPositions[i];
 		let color;
 
-		if (LightingMode === "Forced") {
-			color = hexToRgb(forcedColor);
-		} else {
-			color = device.color(ledPosition[0], ledPosition[1]);
-		}
+		if (LightingMode === "Forced") color = hexToRgb(forcedColor);
+		else color = device.color(p[0], p[1]);
 
-		RGBData[i * 3] = color[0];
+		RGBData[i * 3]     = color[0];
 		RGBData[i * 3 + 1] = color[1];
 		RGBData[i * 3 + 2] = color[2];
 	}
@@ -139,32 +155,27 @@ function GetDeviceRGB(){
 	return RGBData;
 }
 
+// -------------------- Device Table / Layout --------------------
 function fetchDeviceInfoFromTableAndConfigure() {
-	if(GoveeDeviceLibrary.hasOwnProperty(controller.sku)){
+	if (GoveeDeviceLibrary.hasOwnProperty(controller.sku)) {
 		const info = GoveeDeviceLibrary[controller.sku];
 		device.setName(`Govee ${info.name}`);
 
-		// Bei Subdevices: ledCount bleibt 0, der Controller selbst ist nur “Host”
-		if(info.hasVariableLedCount){
-			device.addProperty({ "property": "variableLedCount", label: "Segment Count", "type": "number", "min": 1, "max": 120, default: info.ledCount, step: 1 });
-			SetLedCount(variableLedCount);
-		}else{
-			SetLedCount(info.ledCount);
-			device.removeProperty("variableLedCount");
-		}
+		// Hier setzen wir ABSICHTLICH 114, auch wenn usesSubDevices=true,
+		// damit das Device nicht auf 0x1 fällt.
+		SetLedCount(info.ledCount);
 
-		if(info.usesSubDevices){
+		if (info.usesSubDevices) {
 			device.SetIsSubdeviceController(true);
-			for(const sd of info.subdevices){
-				CreateSubDevice(sd);
-			}
-		}else{
+			for (const sd of info.subdevices) CreateSubDevice(sd);
+		} else {
 			device.SetIsSubdeviceController(false);
 		}
-	}else{
+
+	} else {
 		device.log("Using Default Layout...");
 		device.setName(`Govee: ${controller.sku}`);
-		SetLedCount(36);
+		SetLedCount(114);
 	}
 }
 
@@ -178,15 +189,15 @@ function SetLedCount(count){
 function CreateLedMap(){
 	ledNames = [];
 	ledPositions = [];
-	for(let i = 0; i < ledCount; i++){
+	for (let i = 0; i < ledCount; i++){
 		ledNames.push(`Led ${i + 1}`);
 		ledPositions.push([i, 0]);
 	}
 }
 
 function ClearSubdevices(){
-	for(const subdevice of device.getCurrentSubdevices()){
-		device.removeSubdevice(subdevice);
+	for (const sd of device.getCurrentSubdevices()){
+		device.removeSubdevice(sd);
 	}
 	subdevices = [];
 }
@@ -204,21 +215,13 @@ function CreateSubDevice(subdevice){
 	subdevices.push(subdevice);
 }
 
-function hexToRgb(hex) {
-	const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-	return [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)];
-}
-
-/* =========================
-   Discovery (wie Original)
-   ========================= */
-
+// -------------------- Discovery (unverändert, aber safeLog statt service-only) --------------------
 export function DiscoveryService() {
 	this.IconUrl = "https://assets.signalrgb.com/brands/govee/logo.png";
 	this.firstRun = true;
 
 	this.Initialize = function(){
-		service.log("Searching for Govee network devices...");
+		safeLog("Searching for Govee network devices...");
 		this.LoadCachedDevices();
 	};
 
@@ -234,21 +237,21 @@ export function DiscoveryService() {
 	this.activeSocketTimer = Date.now();
 
 	this.LoadCachedDevices = function(){
-		service.log("Loading Cached Devices...");
-		for(const [key, value] of this.cache.Entries()){
+		safeLog("Loading Cached Devices...");
+		for (const [key, value] of this.cache.Entries()){
 			this.checkCachedDevice(value.ip);
 		}
 	};
 
 	this.checkCachedDevice = function(ipAddress) {
-		if(UDPServer !== undefined) {
+		if (UDPServer !== undefined) {
 			UDPServer.stop();
 			UDPServer = undefined;
 		}
 
 		const socketServer = new UdpSocketServer({
-			ip : ipAddress,
-			isDiscoveryServer : true
+			ip: ipAddress,
+			isDiscoveryServer: true
 		});
 
 		this.activeSockets.set(ipAddress, socketServer);
@@ -257,8 +260,8 @@ export function DiscoveryService() {
 	};
 
 	this.clearSockets = function() {
-		if(Date.now() - this.activeSocketTimer > 10000 && this.activeSockets.size > 0) {
-			for(const [key, value] of this.activeSockets.entries()){
+		if (Date.now() - this.activeSocketTimer > 10000 && this.activeSockets.size > 0) {
+			for (const [key, value] of this.activeSockets.entries()){
 				value.stop();
 				this.activeSockets.delete(key);
 			}
@@ -267,10 +270,10 @@ export function DiscoveryService() {
 
 	this.forceDiscovery = function(value) {
 		const packetType = JSON.parse(value.response).msg.cmd;
-		if(packetType != "scan") return;
+		if (packetType != "scan") return;
 
 		const isValid = JSON.parse(value.response).msg.data.hasOwnProperty("ip");
-		if(!isValid) return;
+		if (!isValid) return;
 
 		this.CreateControllerDevice(value);
 	};
@@ -280,41 +283,31 @@ export function DiscoveryService() {
 	};
 
 	this.CheckForDevices = function(){
-		if(Date.now() - discovery.lastPollTime < discovery.PollInterval) return;
+		if (Date.now() - discovery.lastPollTime < discovery.PollInterval) return;
 
 		discovery.lastPollTime = Date.now();
-		service.broadcast(JSON.stringify({
-			msg: { cmd: "scan", data: { account_topic: "reserve" } }
-		}));
+		if (typeof service !== "undefined") {
+			service.broadcast(JSON.stringify({ msg: { cmd: "scan", data: { account_topic: "reserve" } } }));
+		}
 	};
 
 	this.Update = function(){
-		for(const cont of service.controllers){
-			cont.obj.update();
+		if (typeof service !== "undefined") {
+			for (const cont of service.controllers) cont.obj.update();
 		}
 		this.clearSockets();
 		this.CheckForDevices();
 	};
 
 	this.Shutdown = function(){};
-	this.Discovered = function(value) {
-		const packetType = JSON.parse(value.response).msg.cmd;
-		if(packetType != "scan") return;
-
-		const isValid = JSON.parse(value.response).msg.data.hasOwnProperty("ip");
-		if(!isValid) return;
-
-		this.CreateControllerDevice(value);
-	};
+	this.Discovered = function(value) { this.forceDiscovery(value); };
 	this.Removal = function(value){};
 
 	this.CreateControllerDevice = function(value){
+		if (typeof service === "undefined") return;
 		const controller = service.getController(value.id);
-		if (controller === undefined) {
-			service.addController(new GoveeController(value));
-		} else {
-			controller.updateWithValue(value);
-		}
+		if (controller === undefined) service.addController(new GoveeController(value));
+		else controller.updateWithValue(value);
 	};
 }
 
@@ -340,15 +333,11 @@ class GoveeController{
 		this.wifiVersionSoft = response?.wifiVersionSoft ?? "Unknown";
 		this.initialized = false;
 
-		if(this.name !== "Unknown") {
-			this.cacheControllerInfo(this);
-		}
+		if (this.name !== "Unknown") this.cacheControllerInfo(this);
 	}
 
 	GetGoveeDevice(sku){
-		if(GoveeDeviceLibrary.hasOwnProperty(sku)){
-			return GoveeDeviceLibrary[sku];
-		}
+		if (GoveeDeviceLibrary.hasOwnProperty(sku)) return GoveeDeviceLibrary[sku];
 		return {
 			name: "Unknown",
 			supportDreamView: false,
@@ -369,18 +358,21 @@ class GoveeController{
 		this.wifiVersionHard = response?.wifiVersionHard ?? "Unknown";
 		this.wifiVersionSoft = response?.wifiVersionSoft ?? "Unknown";
 
-		service.updateController(this);
+		if (typeof service !== "undefined") service.updateController(this);
 	}
 
 	update(){
 		if(!this.initialized){
 			this.initialized = true;
-			service.updateController(this);
-			service.announceController(this);
+			if (typeof service !== "undefined") {
+				service.updateController(this);
+				service.announceController(this);
+			}
 		}
 	}
 
 	cacheControllerInfo(value){
+		if (typeof discovery === "undefined") return;
 		discovery.cache.Add(value.id, { name: value.name, ip: value.ip, id: value.id });
 	}
 }
@@ -446,13 +438,9 @@ class GoveeProtocol {
 	}
 
 	SendRGB(RGBData) {
-		if (this.supportDreamView) {
-			this.SendEncodedPacket(this.createDreamViewPacket(RGBData));
-		} else if(this.supportRazer) {
-			this.SendEncodedPacket(this.createRazerPacket(RGBData));
-		} else{
-			this.SetStaticColor(RGBData.slice(0, 3));
-		}
+		if (this.supportDreamView) this.SendEncodedPacket(this.createDreamViewPacket(RGBData));
+		else if (this.supportRazer) this.SendEncodedPacket(this.createRazerPacket(RGBData));
+		else this.SetStaticColor(RGBData.slice(0, 3));
 	}
 }
 
@@ -466,13 +454,13 @@ class UdpSocketServer{
 	}
 
 	send(packet) {
-		if(!this.server) this.server = udp.createSocket();
+		if (!this.server) this.server = udp.createSocket();
 		this.server.send(packet);
 	}
 
 	start(){
 		this.server = udp.createSocket();
-		if(this.server){
+		if (this.server){
 			this.server.on('error', this.onError.bind(this));
 			this.server.on('message', this.onMessage.bind(this));
 			this.server.on('listening', this.onListening.bind(this));
@@ -480,29 +468,31 @@ class UdpSocketServer{
 			this.server.bind(this.listenPort);
 			this.server.connect(this.ipToConnectTo, this.broadcastPort);
 		}
-	}
+	};
 
 	stop(){
-		if(this.server) {
+		if (this.server) {
 			this.server.disconnect();
 			this.server.close();
 		}
 	}
 
 	onConnection(){
-		if(!this.server) return;
-		this.server.send(JSON.stringify({ msg: { cmd: "scan", data: { account_topic: "reserve" }}}));
-	}
+		// NIEMALS service.log hard nutzen
+		safeLog("UDP connected.");
+		// Discovery ping ist ok, aber optional:
+		try {
+			this.server.send(JSON.stringify({ msg: { cmd: "scan", data: { account_topic: "reserve" }}}));
+		} catch (e) {}
+	};
 
-	onListening(){}
-
+	onListening(){};
 	onMessage(msg){
-		if(this.isDiscoveryServer) discovery.forceDiscovery(msg);
-	}
-
+		if (this.isDiscoveryServer && typeof discovery !== "undefined") discovery.forceDiscovery(msg);
+	};
 	onError(code, message){
-		service.log(`Error: ${code} - ${message}`);
-	}
+		safeLog(`UDP Error: ${code} - ${message}`);
+	};
 }
 
 class IPCache{
@@ -520,70 +510,74 @@ class IPCache{
 	}
 	Entries(){ return this.cacheMap.entries(); }
 	PurgeCache() {
-		service.removeSetting(this.persistanceId, this.persistanceKey);
+		if (typeof service !== "undefined") service.removeSetting(this.persistanceId, this.persistanceKey);
 	}
 	PopulateCacheFromStorage(){
+		if (typeof service === "undefined") return;
 		const storage = service.getSetting(this.persistanceId, this.persistanceKey);
 		if(storage === undefined) return;
 
 		let mapValues;
-		try { mapValues = JSON.parse(storage); } catch(e){ service.log(e); }
+		try { mapValues = JSON.parse(storage); } catch(e){ safeLog(e); }
 		if(mapValues === undefined) return;
 
 		this.cacheMap = new Map(mapValues);
 	}
 	Persist(){
+		if (typeof service === "undefined") return;
 		service.saveSetting(this.persistanceId, this.persistanceKey, JSON.stringify(Array.from(this.cacheMap.entries())));
 	}
 }
 
-/** Minimal Library: nur H6168 (36 Zonen, Clockwise) */
+// -------------------- ONLY H6168 --------------------
+const TOP = 50;
+const RIGHT = 7;
+const BOTTOM = 50;
+const LEFT = 7;
+// 50+7+50+7 = 114
+
 const GoveeDeviceLibrary = {
 	H6168: {
-		name: "TV Backlight (36 Zones, Clockwise)",
+		name: "TV Backlight (114 LEDs)",
 		deviceImage: "https://assets.signalrgb.com/devices/brands/govee/wifi/h6168.png",
 		sku: "H6168",
 		state: 1,
 		supportRazer: true,
 		supportDreamView: true,
-
-		// Controller hat keine direkten LEDs, wir nutzen Subdevices
-		ledCount: 0,
+		ledCount: TOP + RIGHT + BOTTOM + LEFT, // 114
 		usesSubDevices: true,
-
-		// Clockwise: Top (L->R), Right (T->B), Bottom (R->L), Left (B->T)
 		subdevices: [
-			// TOP: 11
+			// TOP: links -> rechts
 			{
 				name: "TV Top",
-				ledCount: 11,
-				size: [11, 1],
-				ledNames: Array.from({length:11}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:11}, (_,i)=>[i, 0]),
+				ledCount: TOP,
+				size: [TOP, 1],
+				ledNames: Array.from({length: TOP}, (_,i)=>`Led ${i+1}`),
+				ledPositions: Array.from({length: TOP}, (_,i)=>[i, 0]),
 			},
-			// RIGHT: 7
+			// RIGHT: oben -> unten
 			{
 				name: "TV Right",
-				ledCount: 7,
-				size: [1, 7],
-				ledNames: Array.from({length:7}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:7}, (_,i)=>[0, i]),
+				ledCount: RIGHT,
+				size: [1, RIGHT],
+				ledNames: Array.from({length: RIGHT}, (_,i)=>`Led ${i+1}`),
+				ledPositions: Array.from({length: RIGHT}, (_,i)=>[0, i]),
 			},
-			// BOTTOM: 11 (R->L)
+			// BOTTOM: rechts -> links
 			{
 				name: "TV Bottom",
-				ledCount: 11,
-				size: [11, 1],
-				ledNames: Array.from({length:11}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:11}, (_,i)=>[10 - i, 0]),
+				ledCount: BOTTOM,
+				size: [BOTTOM, 1],
+				ledNames: Array.from({length: BOTTOM}, (_,i)=>`Led ${i+1}`),
+				ledPositions: Array.from({length: BOTTOM}, (_,i)=>[BOTTOM - 1 - i, 0]),
 			},
-			// LEFT: 7 (B->T)
+			// LEFT: unten -> oben
 			{
 				name: "TV Left",
-				ledCount: 7,
-				size: [1, 7],
-				ledNames: Array.from({length:7}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:7}, (_,i)=>[0, 6 - i]),
+				ledCount: LEFT,
+				size: [1, LEFT],
+				ledNames: Array.from({length: LEFT}, (_,i)=>`Led ${i+1}`),
+				ledPositions: Array.from({length: LEFT}, (_,i)=>[0, LEFT - 1 - i]),
 			},
 		]
 	},
