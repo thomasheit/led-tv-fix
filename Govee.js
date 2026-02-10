@@ -1,7 +1,4 @@
 import udp from "@SignalRGB/udp";
-
-import udp from "@SignalRGB/udp";
-
 // REQUIRED so PluginCrawler doesn't treat this as invalid HID
 export function VendorId() { return 0; }
 export function ProductId() { return 0; }
@@ -545,7 +542,7 @@ const GoveeDeviceLibrary = {
 		state: 1,
 		supportRazer: true,
 		supportDreamView: true,
-		ledCount: 0,
+		ledCount: 46,
 		usesSubDevices: true,
 		subdevices: [
 			// TOP: 18 (Start oben links -> rechts)
@@ -583,5 +580,6 @@ const GoveeDeviceLibrary = {
 		]
 	},
 };
+
 
 
