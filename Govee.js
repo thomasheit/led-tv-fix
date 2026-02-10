@@ -1,23 +1,27 @@
 import udp from "@SignalRGB/udp";
+
 // REQUIRED so PluginCrawler doesn't treat this as invalid HID
 export function VendorId() { return 0; }
 export function ProductId() { return 0; }
+
 export function Name() { return "Govee"; }
 export function Version() { return "1.0.0"; }
 export function Type() { return "network"; }
 export function Publisher() { return "WhirlwindFX"; }
-export function SubdeviceController() { return true; }
-export function Size() { return [22, 1]; }
-export function DefaultPosition() {return [75, 70]; }
-export function DefaultScale(){return 8.0;}
+
+// Canvas-Größe fürs UI (nicht die Segment-Anzahl im Protokoll)
+export function Size() { return [36, 1]; }
+export function DefaultPosition() { return [75, 70]; }
+export function DefaultScale() { return 8.0; }
+
 /* global
 controller:readonly
 discovery: readonly
 TurnOffOnShutdown:readonly
-variableLedCount:readonly
 LightingMode:readonly
 forcedColor:readonly
 */
+
 export function ControllableParameters() {
 	return [
 		{"property":"TurnOffOnShutdown", "group":"settings", "label":"Turn off on App Exit", "type":"boolean", "default":"false"},
@@ -26,14 +30,13 @@ export function ControllableParameters() {
 	];
 }
 
+// Wie im Original: export bleibt false – die Runtime setzt es bei Bedarf auf true.
 export function SubdeviceController() { return false; }
 
 /** @type {GoveeProtocol} */
 let govee;
-let ledCount = 4;
-let ledNames = [];
-let ledPositions = [];
 let subdevices = [];
+let UDPServer;
 
 export function Initialize(){
 	device.addFeature("base64");
@@ -41,6 +44,7 @@ export function Initialize(){
 	device.setName(controller.sku);
 	device.setImageFromUrl(controller.deviceImage);
 
+	// Make sure we don't have a server floating around still.
 	if(UDPServer !== undefined) {
 		UDPServer.stop();
 		UDPServer = undefined;
@@ -59,6 +63,7 @@ export function Initialize(){
 
 	govee = new GoveeProtocol(controller.ip, controller.supportDreamView, controller.supportRazer);
 
+	// Wie im Original (Wireshark)
 	govee.setDeviceState(true);
 	govee.SetRazerMode(true);
 	govee.SetRazerMode(true);
@@ -66,21 +71,20 @@ export function Initialize(){
 }
 
 export function Render(){
-	const RGBData = subdevices.length > 0 ? GetRGBFromSubdevices() : GetDeviceRGB();
+	const RGBData = (subdevices.length > 0) ? GetRGBFromSubdevices() : [];
+
 	device.log(`Render: subdevices=${subdevices.length} bytes=${RGBData.length}`);
 	govee.SendRGB(RGBData);
+
 	device.pause(10);
 }
 
 export function Shutdown(suspend){
 	govee.SetRazerMode(false);
+
 	if(TurnOffOnShutdown){
 		govee.setDeviceState(false);
 	}
-}
-
-export function onvariableLedCountChanged(){
-	SetLedCount(variableLedCount);
 }
 
 // ===== FIX: correct buffer indexing across subdevices =====
@@ -110,70 +114,29 @@ function GetRGBFromSubdevices(){
 	return RGBData;
 }
 
-
-function GetDeviceRGB(){
-	const RGBData = new Array(ledCount * 3);
-
-	for(let i = 0 ; i < ledPositions.length; i++){
-		const ledPosition = ledPositions[i];
-		let color;
-
-		if (LightingMode === "Forced") {
-			color = hexToRgb(forcedColor);
-		} else {
-			color = device.color(ledPosition[0], ledPosition[1]);
-		}
-
-		RGBData[i * 3] = color[0];
-		RGBData[i * 3 + 1] = color[1];
-		RGBData[i * 3 + 2] = color[2];
-	}
-
-	return RGBData;
-}
-
 function fetchDeviceInfoFromTableAndConfigure() {
 	if(GoveeDeviceLibrary.hasOwnProperty(controller.sku)){
 		const info = GoveeDeviceLibrary[controller.sku];
 		device.setName(`Govee ${info.name}`);
 
-		if(info.hasVariableLedCount){
-			device.addProperty({"property": "variableLedCount", label: "Segment Count", "type": "number", "min": 1, "max": 60, default: info.ledCount, step: 1});
-			SetLedCount(variableLedCount);
-		}else{
-			SetLedCount(info.ledCount);
-			device.removeProperty("variableLedCount");
+		// Für dieses TV Backlight arbeiten wir nur mit Subdevices/Segmenten
+		device.SetIsSubdeviceController(true);
+		for(const sd of info.subdevices){
+			CreateSubDevice(sd);
 		}
 
-		if(info.usesSubDevices){
-			device.SetIsSubdeviceController(true);
-			for(const sd of info.subdevices){
-				CreateSubDevice(sd);
-			}
-		}else{
-			device.SetIsSubdeviceController(false);
-		}
+		// UI-Größe/Canvas
+		device.setSize([36, 1]);
 
 	}else{
-		device.log("Using Default Layout...");
+		device.log("Unknown SKU - fallback to 36 segments layout.");
 		device.setName(`Govee: ${controller.sku}`);
-		SetLedCount(20);
-	}
-}
 
-function SetLedCount(count){
-	ledCount = count;
-	CreateLedMap();
-	device.setSize([ledCount, 1]);
-	device.setControllableLeds(ledNames, ledPositions);
-}
-
-function CreateLedMap(){
-	ledNames = [];
-	ledPositions = [];
-	for(let i = 0; i < ledCount; i++){
-		ledNames.push(`Led ${i + 1}`);
-		ledPositions.push([i, 0]);
+		device.SetIsSubdeviceController(true);
+		for(const sd of GoveeDeviceLibrary.H6168.subdevices){
+			CreateSubDevice(sd);
+		}
+		device.setSize([36, 1]);
 	}
 }
 
@@ -202,7 +165,7 @@ function hexToRgb(hex) {
 	return [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)];
 }
 
-let UDPServer;
+// ===================== Discovery (unverändert minimal) =====================
 
 export function DiscoveryService() {
 	this.IconUrl = "https://assets.signalrgb.com/brands/govee/logo.png";
@@ -288,7 +251,6 @@ export function DiscoveryService() {
 	};
 
 	this.Shutdown = function(){};
-
 	this.Discovered = function(value) {
 		const packetType = JSON.parse(value.response).msg.cmd;
 		if(packetType != "scan") return;
@@ -298,7 +260,6 @@ export function DiscoveryService() {
 
 		this.CreateControllerDevice(value);
 	};
-
 	this.Removal = function(value){};
 
 	this.CreateControllerDevice = function(value){
@@ -312,7 +273,7 @@ export function DiscoveryService() {
 }
 
 class GoveeController{
-	 constructor(value){
+	constructor(value){
 		this.id = value?.id ?? "Unknown ID";
 		const packet = JSON.parse(value.response).msg;
 		const response = packet.data;
@@ -320,10 +281,10 @@ class GoveeController{
 		this.ip = response?.ip ?? "Unknown IP";
 		this.name = response?.sku ?? "Unknown SKU";
 
-		this.GoveeInfo = this.GetGoveeDevice(response.sku);
-		this.supportDreamView = this.GoveeInfo?.supportDreamView;
-		this.supportRazer = this.GoveeInfo?.supportRazer;
-		this.deviceImage = this.GoveeInfo?.deviceImage;
+		const info = this.GetGoveeDevice(response.sku);
+		this.supportDreamView = info?.supportDreamView;
+		this.supportRazer = info?.supportRazer;
+		this.deviceImage = info?.deviceImage;
 
 		this.device = response.device;
 		this.sku = response?.sku ?? "Unknown Govee SKU";
@@ -340,12 +301,12 @@ class GoveeController{
 
 	GetGoveeDevice(sku){
 		if(GoveeDeviceLibrary.hasOwnProperty(sku)){
-		  return GoveeDeviceLibrary[sku];
+			return GoveeDeviceLibrary[sku];
 		}
 		return {
 			name: "Unknown",
-			supportDreamView: false,
-			supportRazer: false,
+			supportDreamView: true,
+			supportRazer: true,
 			deviceImage: "https://assets.signalrgb.com/brands/products/govee_ble/icon@2x.png"
 		};
 	}
@@ -389,10 +350,6 @@ class GoveeProtocol {
 
 	setDeviceState(on){
 		UDPServer.send(JSON.stringify({ "msg": { "cmd": "turn", "data": { "value": on ? 1 : 0 }}}));
-	}
-
-	SetBrightness(value) {
-		UDPServer.send(JSON.stringify({ "msg": { "cmd":"brightness", "data": { "value":value }}}));
 	}
 
 	SetRazerMode(enable){
@@ -439,6 +396,7 @@ class GoveeProtocol {
 	}
 
 	SendRGB(RGBData) {
+		// Wichtig: RGBData muss die Segmentanzahl treffen (hier 36*3=108 Bytes)
 		if (this.supportDreamView) {
 			this.SendEncodedPacket(this.createDreamViewPacket(RGBData));
 		} else if(this.supportRazer) {
@@ -456,11 +414,6 @@ class UdpSocketServer{
 		this.broadcastPort = args?.broadcastPort ?? 4001;
 		this.ipToConnectTo = args?.ip ?? "239.255.255.250";
 		this.isDiscoveryServer = args?.isDiscoveryServer ?? false;
-	}
-
-	write(packet, address, port) {
-		if(!this.server) this.server = udp.createSocket();
-		this.server.write(packet, address, port);
 	}
 
 	send(packet) {
@@ -515,9 +468,7 @@ class IPCache{
 		}
 	}
 	Entries(){ return this.cacheMap.entries(); }
-	PurgeCache() {
-		service.removeSetting(this.persistanceId, this.persistanceKey);
-	}
+	PurgeCache() { service.removeSetting(this.persistanceId, this.persistanceKey); }
 	PopulateCacheFromStorage(){
 		const storage = service.getSetting(this.persistanceId, this.persistanceKey);
 		if(storage === undefined) return;
@@ -533,7 +484,11 @@ class IPCache{
 	}
 }
 
-/** Minimal Library: nur H6168 (dein Gerät) */
+/**
+ * Minimal Library: H6168 als TV Backlight mit 36 Segmenten (Clockwise)
+ * Aufteilung basierend auf 114 physischen LEDs -> auf 36 Zonen runtergebrochen:
+ * Top 11, Right 9, Bottom 11, Left 5  => 36
+ */
 const GoveeDeviceLibrary = {
 	H6168: {
 		name: "TV Backlight (36 Segments, Clockwise)",
@@ -542,44 +497,44 @@ const GoveeDeviceLibrary = {
 		state: 1,
 		supportRazer: true,
 		supportDreamView: true,
-		ledCount: 46,
+		ledCount: 0,
 		usesSubDevices: true,
 		subdevices: [
-			// TOP: 18 (Start oben links -> rechts)
-			{
-				name: "TV Top",
-				ledCount: 18,
-				size: [18, 1],
-				ledNames: Array.from({length:18}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:18}, (_,i)=>[i, 0]),
-			},
-			// RIGHT: 10 (oben -> unten)
-			{
-				name: "TV Right",
-				ledCount: 10,
-				size: [1, 10],
-				ledNames: Array.from({length:10}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:10}, (_,i)=>[0, i]),
-			},
-			// BOTTOM: 10 (rechts -> links)
-			{
-				name: "TV Bottom",
-				ledCount: 10,
-				size: [10, 1],
-				ledNames: Array.from({length:10}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:10}, (_,i)=>[9 - i, 0]),
-			},
-			// LEFT: 8 (unten -> oben)
-			{
-				name: "TV Left",
-				ledCount: 8,
-				size: [1, 8],
-				ledNames: Array.from({length:8}, (_,i)=>`Led ${i+1}`),
-				ledPositions: Array.from({length:8}, (_,i)=>[0, 7 - i]),
-			},
-		]
+  // TOP: 11 (oben links -> rechts)
+  {
+    name: "TV Top",
+    ledCount: 11,
+    size: [11, 1],
+    ledNames: Array.from({ length: 11 }, (_, i) => `Led ${i + 1}`),
+    ledPositions: Array.from({ length: 11 }, (_, i) => [i, 0]),
+  },
+
+  // RIGHT: 7 (oben -> unten)
+  {
+    name: "TV Right",
+    ledCount: 7,
+    size: [1, 7],
+    ledNames: Array.from({ length: 7 }, (_, i) => `Led ${i + 1}`),
+    ledPositions: Array.from({ length: 7 }, (_, i) => [0, i]),
+  },
+
+  // BOTTOM: 11 (rechts -> links)
+  {
+    name: "TV Bottom",
+    ledCount: 11,
+    size: [11, 1],
+    ledNames: Array.from({ length: 11 }, (_, i) => `Led ${i + 1}`),
+    ledPositions: Array.from({ length: 11 }, (_, i) => [10 - i, 0]),
+  },
+
+  // LEFT: 7 (unten -> oben)
+  {
+    name: "TV Left",
+    ledCount: 7,
+    size: [1, 7],
+    ledNames: Array.from({ length: 7 }, (_, i) => `Led ${i + 1}`),
+    ledPositions: Array.from({ length: 7 }, (_, i) => [0, 6 - i]),
+  },
+]
 	},
 };
-
-
-
