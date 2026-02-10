@@ -1,9 +1,15 @@
 import udp from "@SignalRGB/udp";
-service.log("### GOVEE CUSTOM LOADED (TOP OF FILE) ###");
+
+import udp from "@SignalRGB/udp";
+
+// REQUIRED so PluginCrawler doesn't treat this as invalid HID
+export function VendorId() { return 0; }
+export function ProductId() { return 0; }
 export function Name() { return "Govee"; }
-export function Version() { return "1.0.1"; } // bump
+export function Version() { return "1.0.0"; }
 export function Type() { return "network"; }
 export function Publisher() { return "WhirlwindFX"; }
+export function SubdeviceController() { return true; }
 export function Size() { return [22, 1]; }
 export function DefaultPosition() {return [75, 70]; }
 export function DefaultScale(){return 8.0;}
@@ -577,4 +583,5 @@ const GoveeDeviceLibrary = {
 		]
 	},
 };
+
 
