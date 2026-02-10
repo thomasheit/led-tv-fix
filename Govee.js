@@ -63,6 +63,7 @@ export function Initialize(){
 
 export function Render(){
 	const RGBData = subdevices.length > 0 ? GetRGBFromSubdevices() : GetDeviceRGB();
+	device.log(`Render: subdevices=${subdevices.length} bytes=${RGBData.length}`);
 	govee.SendRGB(RGBData);
 	device.pause(10);
 }
@@ -81,29 +82,30 @@ export function onvariableLedCountChanged(){
 // ===== FIX: correct buffer indexing across subdevices =====
 function GetRGBFromSubdevices(){
 	const RGBData = [];
-	let idx = 0;
+	let o = 0;
 
 	for(const subdevice of subdevices){
 		const positions = subdevice.ledPositions;
 
 		for(let i = 0 ; i < positions.length; i++){
-			const pos = positions[i];
+			const p = positions[i];
 			let color;
 
 			if (LightingMode === "Forced") {
 				color = hexToRgb(forcedColor);
 			} else {
-				color = device.subdeviceColor(subdevice.id, pos[0], pos[1]);
+				color = device.subdeviceColor(subdevice.id, p[0], p[1]);
 			}
 
-			RGBData[idx++] = color[0];
-			RGBData[idx++] = color[1];
-			RGBData[idx++] = color[2];
+			RGBData[o++] = color[0];
+			RGBData[o++] = color[1];
+			RGBData[o++] = color[2];
 		}
 	}
 
 	return RGBData;
 }
+
 
 function GetDeviceRGB(){
 	const RGBData = new Array(ledCount * 3);
