@@ -1,4 +1,5 @@
 import udp from "@SignalRGB/udp";
+service.log("### GOVEE CUSTOM LOADED (TOP OF FILE) ###");
 export function Name() { return "Govee"; }
 export function Version() { return "1.0.1"; } // bump
 export function Type() { return "network"; }
@@ -576,3 +577,4 @@ const GoveeDeviceLibrary = {
 		]
 	},
 };
+
