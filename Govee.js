@@ -116,29 +116,29 @@ function ClearSubdevices(){
 	subdevices = [];
 }
 function GetRGBFromSubdevices(){
-	const RGBData = [];
+  const RGBData = [];
+  let idx = 0; // LED-Index (nicht Byte-Index)
 
-	for (const subdevice of subdevices){
-		const positions = subdevice.ledPositions;
+  for (const subdevice of subdevices){
+    const positions = subdevice.ledPositions;
 
-		for (let i = 0; i < positions.length; i++){
-			const [x, y] = positions[i];
-			let c;
+    for (let i = 0; i < positions.length; i++){
+      const [x, y] = positions[i];
 
-			if (LightingMode === "Forced") {
-				c = hexToRgb(forcedColor);
-			} else {
-				c = device.subdeviceColor(subdevice.id, x, y);
-			}
+      const c = (LightingMode === "Forced")
+        ? hexToRgb(forcedColor)
+        : device.subdeviceColor(subdevice.id, x, y);
 
-			const base = (RGBData.length / 3 | 0) * 3;
-			RGBData[base] = c[0];
-			RGBData[base + 1] = c[1];
-			RGBData[base + 2] = c[2];
-		}
-	}
+      const base = idx * 3;
+      RGBData[base]     = c[0];
+      RGBData[base + 1] = c[1];
+      RGBData[base + 2] = c[2];
 
-	return RGBData;
+      idx++;
+    }
+  }
+
+  return RGBData;
 }
 
 function GetDeviceRGB(){
@@ -1673,6 +1673,7 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
 
 
