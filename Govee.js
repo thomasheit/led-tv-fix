@@ -24,8 +24,6 @@ export function ControllableParameters() {
 /** @type {GoveeProtocol} */
 let govee;
 
-let subdevices = [];
-
 export function Initialize(){
 	device.addFeature("base64");
 
@@ -45,7 +43,7 @@ export function Initialize(){
 
 	UDPServer.start();
 	//Establish a new udp server. This is now required for using udp.send.
-  ClearSubdevices();
+
 	fetchDeviceInfoFromTableAndConfigure();
 
 	govee = new GoveeProtocol(controller.ip, controller.supportDreamView, controller.supportRazer);
@@ -55,8 +53,7 @@ export function Initialize(){
 }
 
 export function Render(){
-	const RGBData = subdevices.length > 0 ? GetRGBFromSubdevices() : GetDeviceRGB();
-	govee.SendRGB(RGBData);
+	govee.SendRGB();
 	device.pause(10);
 }
 
@@ -76,97 +73,18 @@ function fetchDeviceInfoFromTableAndConfigure() {
 	if(GoveeDeviceLibrary.hasOwnProperty(controller.sku)){
 		const GoveeDeviceInfo = GoveeDeviceLibrary[controller.sku];
 		device.setName(`Govee ${GoveeDeviceInfo.sku} - ${GoveeDeviceInfo.name}`);
-
-		// ✅ NEW: if the device uses subdevices (4 sides), create them
-		if (GoveeDeviceInfo.usesSubDevices) {
-			device.SetIsSubdeviceController(true);
-
-			// Remove old channel layout (optional, but avoids confusion)
-			// NOTE: Some SignalRGB builds don’t like removing channels; if it crashes, delete these 2 lines.
-			// device.removeChannel("Channel 1");
-			// device.SetLedLimit(0);
-
-			for (const sub of GoveeDeviceInfo.subdevices) {
-				CreateSubDevice(sub);
-			}
-
-			return; // IMPORTANT: stop here, do NOT create Channel 1
-		}
-
-		// ---- old behaviour (channel-based) ----
-		device.SetIsSubdeviceController(false);
 		device.addChannel(`Channel 1`, GoveeDeviceInfo.ledCount);
 		device.channel(`Channel 1`).SetLedLimit(GoveeDeviceInfo.ledCount);
 		device.SetLedLimit(GoveeDeviceInfo.ledCount);
-
 	}else{
 		device.log(`SKU (${controller.sku}) not found on the library, using 30 LEDs!`);
 		device.setName(`Govee: ${controller.sku}`);
-		device.SetIsSubdeviceController(false);
 		device.addChannel(`Channel 1`, 30);
 		device.channel(`Channel 1`).SetLedLimit(30);
 		device.SetLedLimit(30);
 	}
+
 }
-
-function ClearSubdevices(){
-	for(const subdevice of device.getCurrentSubdevices()){
-		device.removeSubdevice(subdevice);
-	}
-	subdevices = [];
-}
-function GetRGBFromSubdevices(){
-  const RGBData = [];
-  let idx = 0; // LED-Index (nicht Byte-Index)
-
-  for (const subdevice of subdevices){
-    const positions = subdevice.ledPositions;
-
-    for (let i = 0; i < positions.length; i++){
-      const [x, y] = positions[i];
-
-      const c = (LightingMode === "Forced")
-        ? hexToRgb(forcedColor)
-        : device.subdeviceColor(subdevice.id, x, y);
-
-      const base = idx * 3;
-      RGBData[base]     = c[0];
-      RGBData[base + 1] = c[1];
-      RGBData[base + 2] = c[2];
-
-      idx++;
-    }
-  }
-
-  return RGBData;
-}
-
-function GetDeviceRGB(){
-	// fallback: nimm Channel 1 wie im alten Code
-	const channel = device.channel("Channel 1");
-	if(!channel) return [];
-	return channel.getColors("Inline");
-}
-
-function hexToRgb(hex) {
-	const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-	return [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)];
-}
-
-function CreateSubDevice(subdevice){
-	const count = device.getCurrentSubdevices().length;
-	subdevice.id = `${subdevice.name} ${count + 1}`;
-	device.createSubdevice(subdevice.id);
-
-	device.setSubdeviceName(subdevice.id, subdevice.name);
-	device.setSubdeviceImage(subdevice.id, controller.deviceImage);
-	device.setSubdeviceSize(subdevice.id, subdevice.size[0], subdevice.size[1]);
-	device.setSubdeviceLeds(subdevice.id, subdevice.ledNames, subdevice.ledPositions);
-
-	subdevices.push(subdevice);
-}
-
-
 
 // -------------------------------------------<( Discovery Service )>--------------------------------------------------
 let UDPServer;
@@ -716,73 +634,53 @@ class GoveeProtocol {
 			},
 		}));
 	}
-SendRGB(overrideColorOrRGBData) {
-	// Channel 1 kann bei Subdevices NICHT existieren -> absichern
-	const ch1 = device.channel("Channel 1");
 
-	// LedCount: wenn Channel 1 da ist -> nimm den, sonst aus übergebenem RGB-Array ableiten
-	const ChannelLedCount = ch1
-		? ch1.LedCount()
-		: (Array.isArray(overrideColorOrRGBData) ? (overrideColorOrRGBData.length / 3) : 0);
+	SendRGB(overrideColor) {
+		const ChannelLedCount = device.channel(`Channel 1`).LedCount();
+		const componentChannel = device.channel(`Channel 1`);
 
-	const componentChannel = ch1;
+		let RGBData = [];
+		let packet  = [];
 
-	let RGBData = [];
-	let packet  = [];
+		if(overrideColor) {
+			RGBData = device.createColorArray(overrideColor, ChannelLedCount, "Inline");
+		}else if(LightingMode === "Forced"){
+			RGBData = device.createColorArray(forcedColor, ChannelLedCount, "Inline");
+		}else if(componentChannel.shouldPulseColors()){
+			const pulseColor = device.getChannelPulseColor(`Channel 1`);
+			const pulseCount = device.channel(`Channel 1`).LedLimit();
+			RGBData = device.createColorArray(pulseColor, pulseCount, "Inline");
+		}else{
+			RGBData = device.channel(`Channel 1`).getColors("Inline");
+		}
 
-	// ✅ NEU: wenn Array übergeben wurde, nimm es direkt (Subdevice-Farbarray)
-	if (Array.isArray(overrideColorOrRGBData)) {
-		RGBData = overrideColorOrRGBData;
-
-	// overrideColor als Hex-String
-	} else if (overrideColorOrRGBData) {
-		RGBData = device.createColorArray(overrideColorOrRGBData, ChannelLedCount, "Inline");
-
-	} else if (LightingMode === "Forced") {
-		RGBData = device.createColorArray(forcedColor, ChannelLedCount, "Inline");
-
-	} else if (componentChannel && componentChannel.shouldPulseColors()) {
-		const pulseColor = device.getChannelPulseColor("Channel 1");
-		const pulseCount = device.channel("Channel 1").LedLimit();
-		RGBData = device.createColorArray(pulseColor, pulseCount, "Inline");
-
-	} else {
-		// Fallback: normales Verhalten wie vorher – aber nur wenn Channel 1 existiert
-		RGBData = componentChannel ? componentChannel.getColors("Inline") : [];
-	}
-
-	switch (protocolSelect) {
-		case "DreamviewV1":
-			packet = this.createDreamViewPacketV1(RGBData);
-			this.SendEncodedPacket(packet);
-			break;
-
-		case "DreamviewV2":
-			packet = this.createDreamViewPacketV2(RGBData);
-			this.SendEncodedPacket(packet);
-			break;
-
-		case "RazerV1":
-			packet = this.createRazerPacketV1(RGBData);
-			this.SendEncodedPacket(packet);
-			break;
-
-		case "RazerV2":
-			packet = this.createRazerPacketV2(RGBData);
-			this.SendEncodedPacket(packet);
-			break;
-
-		case "Static":
-			this.SetStaticColor(RGBData.slice(0, 3));
-			break;
-
-		default:
-			this.SetStaticColor(RGBData.slice(0, 3));
-			break;
+		switch (protocolSelect) {
+			case "DreamviewV1":
+				packet = this.createDreamViewPacketV1(RGBData);
+				this.SendEncodedPacket(packet);
+				break;
+			case "DreamviewV2":
+				packet = this.createDreamViewPacketV2(RGBData);
+				this.SendEncodedPacket(packet);
+				break;
+			case "RazerV1":
+				packet = this.createRazerPacketV1(RGBData);
+				this.SendEncodedPacket(packet);
+				break;
+			case "RazerV1":
+				packet = this.createRazerPacketV2(RGBData);
+				this.SendEncodedPacket(packet);
+				break;
+			case "Static":
+				this.SetStaticColor(RGBData.slice(0, 3));
+				break;
+		
+			default:
+				this.SetStaticColor(RGBData.slice(0, 3));
+				break;
+		}
 	}
 }
-}
-
 
 class UdpSocketServer{
 	constructor (args) {
@@ -1533,25 +1431,45 @@ const GoveeDeviceLibrary = {
 		ledCount: 10
 	},
 	H6168: {
-  name: "RGBIC TV Backlight (20-seg proxy)",
-  deviceImage: "https://assets.signalrgb.com/devices/brands/govee/wifi/h6168.png",
-  sku: "H6168",
-  state: 1,
-  supportRazer: true,
-  supportDreamView: true,
-  ledCount: 0,
-  usesSubDevices: true,
-  subdevices: [
-    { name:"Segment A", ledCount:10, size:[1,10],
-      ledNames:["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6","Led 7","Led 8","Led 9","Led 10"],
-      ledPositions:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,9]],
-    },
-    { name:"Segment B", ledCount:10, size:[1,10],
-      ledNames:["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6","Led 7","Led 8","Led 9","Led 10"],
-      ledPositions:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,9]],
-    },
-  ]
-},
+		name: "RGBIC TV Light Bars",
+		deviceImage: "https://assets.signalrgb.com/devices/brands/govee/wifi/h6168.png",
+		sku: "H6168",
+		state: 1,
+		supportRazer: true,
+		supportDreamView: true,
+		ledCount: 0,
+		usesSubDevices: true,
+		subdevices: [
+			{
+				name: "RGBIC TV Light Bars",
+				ledCount: 6,
+				size: [1, 6],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6"],
+				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+			},
+			{
+				name: "RGBIC TV Light Bars",
+				ledCount: 4,
+				size: [1, 4],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4"],
+				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3]],
+			},
+			{
+				name: "RGBIC TV Light Bars",
+				ledCount: 6,
+				size: [1, 6],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6"],
+				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+			},
+			{
+				name: "RGBIC TV Light Bars",
+				ledCount: 4,
+				size: [1, 4],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4"],
+				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3]],
+			},
+		]
+	},
 	H7075: {
 		name: "Govee Outdoor Wall Light, 1500LM",
 		deviceImage: "https://assets.signalrgb.com/devices/brands/govee/wifi/h7075.png",
@@ -1653,10 +1571,3 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
-
-
-
-
-
-
-
