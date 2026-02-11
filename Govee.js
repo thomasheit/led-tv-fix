@@ -781,6 +781,7 @@ SendRGB(overrideColorOrRGBData) {
 			break;
 	}
 }
+}
 
 
 class UdpSocketServer{
@@ -1672,6 +1673,7 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
 
 
