@@ -115,6 +115,43 @@ function ClearSubdevices(){
 	}
 	subdevices = [];
 }
+function GetRGBFromSubdevices(){
+	const RGBData = [];
+
+	for (const subdevice of subdevices){
+		const positions = subdevice.ledPositions;
+
+		for (let i = 0; i < positions.length; i++){
+			const [x, y] = positions[i];
+			let c;
+
+			if (LightingMode === "Forced") {
+				c = hexToRgb(forcedColor);
+			} else {
+				c = device.subdeviceColor(subdevice.id, x, y);
+			}
+
+			const base = (RGBData.length / 3 | 0) * 3;
+			RGBData[base] = c[0];
+			RGBData[base + 1] = c[1];
+			RGBData[base + 2] = c[2];
+		}
+	}
+
+	return RGBData;
+}
+
+function GetDeviceRGB(){
+	// fallback: nimm Channel 1 wie im alten Code
+	const channel = device.channel("Channel 1");
+	if(!channel) return [];
+	return channel.getColors("Inline");
+}
+
+function hexToRgb(hex) {
+	const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+	return [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)];
+}
 
 function CreateSubDevice(subdevice){
 	const count = device.getCurrentSubdevices().length;
@@ -679,25 +716,27 @@ class GoveeProtocol {
 			},
 		}));
 	}
+SendRGB(overrideColorOrRGBData) {
+	const ChannelLedCount = device.channel(`Channel 1`).LedCount();
+	const componentChannel = device.channel(`Channel 1`);
 
-	SendRGB(overrideColor) {
-		const ChannelLedCount = device.channel(`Channel 1`).LedCount();
-		const componentChannel = device.channel(`Channel 1`);
+	let RGBData = [];
+	let packet  = [];
 
-		let RGBData = [];
-		let packet  = [];
-
-		if(overrideColor) {
-			RGBData = device.createColorArray(overrideColor, ChannelLedCount, "Inline");
-		}else if(LightingMode === "Forced"){
-			RGBData = device.createColorArray(forcedColor, ChannelLedCount, "Inline");
-		}else if(componentChannel.shouldPulseColors()){
-			const pulseColor = device.getChannelPulseColor(`Channel 1`);
-			const pulseCount = device.channel(`Channel 1`).LedLimit();
-			RGBData = device.createColorArray(pulseColor, pulseCount, "Inline");
-		}else{
-			RGBData = device.channel(`Channel 1`).getColors("Inline");
-		}
+	// ✅ NEU: wenn Array übergeben wurde, nimm es direkt
+	if (Array.isArray(overrideColorOrRGBData)) {
+		RGBData = overrideColorOrRGBData;
+	} else if(overrideColorOrRGBData) {
+		RGBData = device.createColorArray(overrideColorOrRGBData, ChannelLedCount, "Inline");
+	} else if(LightingMode === "Forced"){
+		RGBData = device.createColorArray(forcedColor, ChannelLedCount, "Inline");
+	} else if(componentChannel.shouldPulseColors()){
+		const pulseColor = device.getChannelPulseColor(`Channel 1`);
+		const pulseCount = device.channel(`Channel 1`).LedLimit();
+		RGBData = device.createColorArray(pulseColor, pulseCount, "Inline");
+	}else{
+		RGBData = device.channel(`Channel 1`).getColors("Inline");
+	}
 
 		switch (protocolSelect) {
 			case "DreamviewV1":
@@ -1616,5 +1655,6 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
 
