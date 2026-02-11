@@ -717,54 +717,71 @@ class GoveeProtocol {
 		}));
 	}
 SendRGB(overrideColorOrRGBData) {
-	const ChannelLedCount = device.channel(`Channel 1`).LedCount();
-	const componentChannel = device.channel(`Channel 1`);
+	// Channel 1 kann bei Subdevices NICHT existieren -> absichern
+	const ch1 = device.channel("Channel 1");
+
+	// LedCount: wenn Channel 1 da ist -> nimm den, sonst aus übergebenem RGB-Array ableiten
+	const ChannelLedCount = ch1
+		? ch1.LedCount()
+		: (Array.isArray(overrideColorOrRGBData) ? (overrideColorOrRGBData.length / 3) : 0);
+
+	const componentChannel = ch1;
 
 	let RGBData = [];
 	let packet  = [];
 
-	// ✅ NEU: wenn Array übergeben wurde, nimm es direkt
+	// ✅ NEU: wenn Array übergeben wurde, nimm es direkt (Subdevice-Farbarray)
 	if (Array.isArray(overrideColorOrRGBData)) {
 		RGBData = overrideColorOrRGBData;
-	} else if(overrideColorOrRGBData) {
+
+	// overrideColor als Hex-String
+	} else if (overrideColorOrRGBData) {
 		RGBData = device.createColorArray(overrideColorOrRGBData, ChannelLedCount, "Inline");
-	} else if(LightingMode === "Forced"){
+
+	} else if (LightingMode === "Forced") {
 		RGBData = device.createColorArray(forcedColor, ChannelLedCount, "Inline");
-	} else if(componentChannel.shouldPulseColors()){
-		const pulseColor = device.getChannelPulseColor(`Channel 1`);
-		const pulseCount = device.channel(`Channel 1`).LedLimit();
+
+	} else if (componentChannel && componentChannel.shouldPulseColors()) {
+		const pulseColor = device.getChannelPulseColor("Channel 1");
+		const pulseCount = device.channel("Channel 1").LedLimit();
 		RGBData = device.createColorArray(pulseColor, pulseCount, "Inline");
-	}else{
-		RGBData = device.channel(`Channel 1`).getColors("Inline");
+
+	} else {
+		// Fallback: normales Verhalten wie vorher – aber nur wenn Channel 1 existiert
+		RGBData = componentChannel ? componentChannel.getColors("Inline") : [];
 	}
 
-		switch (protocolSelect) {
-			case "DreamviewV1":
-				packet = this.createDreamViewPacketV1(RGBData);
-				this.SendEncodedPacket(packet);
-				break;
-			case "DreamviewV2":
-				packet = this.createDreamViewPacketV2(RGBData);
-				this.SendEncodedPacket(packet);
-				break;
-			case "RazerV1":
-				packet = this.createRazerPacketV1(RGBData);
-				this.SendEncodedPacket(packet);
-				break;
-			case "RazerV1":
-				packet = this.createRazerPacketV2(RGBData);
-				this.SendEncodedPacket(packet);
-				break;
-			case "Static":
-				this.SetStaticColor(RGBData.slice(0, 3));
-				break;
-		
-			default:
-				this.SetStaticColor(RGBData.slice(0, 3));
-				break;
-		}
+	switch (protocolSelect) {
+		case "DreamviewV1":
+			packet = this.createDreamViewPacketV1(RGBData);
+			this.SendEncodedPacket(packet);
+			break;
+
+		case "DreamviewV2":
+			packet = this.createDreamViewPacketV2(RGBData);
+			this.SendEncodedPacket(packet);
+			break;
+
+		case "RazerV1":
+			packet = this.createRazerPacketV1(RGBData);
+			this.SendEncodedPacket(packet);
+			break;
+
+		case "RazerV2":
+			packet = this.createRazerPacketV2(RGBData);
+			this.SendEncodedPacket(packet);
+			break;
+
+		case "Static":
+			this.SetStaticColor(RGBData.slice(0, 3));
+			break;
+
+		default:
+			this.SetStaticColor(RGBData.slice(0, 3));
+			break;
 	}
 }
+
 
 class UdpSocketServer{
 	constructor (args) {
@@ -1655,6 +1672,7 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
 
 
