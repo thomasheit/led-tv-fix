@@ -1441,18 +1441,32 @@ const GoveeDeviceLibrary = {
 		usesSubDevices: true,
 		subdevices: [
 			{
-				name: "RGBIC TV Light Bars",
+				name: "RGBIC TV Light Bars Top",
 				ledCount: 10,
 				size: [1, 10],
-				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6", "Led 7", "Led 8", "Led 9", "Led 10"],
-				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9]],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6"],
+				ledPositions: [[0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9]],
 			},
 			{
-				name: "RGBIC TV Light Bars",
+				name: "RGBIC TV Light Bars Right",
 				ledCount: 10,
 				size: [1, 10],
-				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6", "Led 7", "Led 8", "Led 9", "Led 10"],
-				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9]],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4"],
+				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3]],
+			},
+			{
+				name: "RGBIC TV Light Bars Bottom",
+				ledCount: 10,
+				size: [1, 10],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6"],
+				ledPositions: [[0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9]],
+			},
+			{
+				name: "RGBIC TV Light Bars Left",
+				ledCount: 10,
+				size: [1, 10],
+				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4"],
+				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3]],
 			},
 		]
 	},
@@ -1557,3 +1571,4 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
