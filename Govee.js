@@ -24,6 +24,8 @@ export function ControllableParameters() {
 /** @type {GoveeProtocol} */
 let govee;
 
+let subdevices = [];
+
 export function Initialize(){
 	device.addFeature("base64");
 
@@ -1614,4 +1616,5 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
