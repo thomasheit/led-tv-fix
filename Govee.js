@@ -1457,7 +1457,7 @@ const GoveeDeviceLibrary = {
 			{
 				name: "RGBIC TV Light Bars Bottom",
 				ledCount: 6,
-				size: [1, 4],
+				size: [1, 6],
 				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6"],
 				ledPositions: [[0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9]],
 			},
@@ -1571,5 +1571,6 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
 
