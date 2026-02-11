@@ -1431,45 +1431,45 @@ const GoveeDeviceLibrary = {
 		ledCount: 10
 	},
 	H6168: {
-		name: "RGBIC TV Light Bars",
-		deviceImage: "https://assets.signalrgb.com/devices/brands/govee/wifi/h6168.png",
-		sku: "H6168",
-		state: 1,
-		supportRazer: true,
-		supportDreamView: true,
-		ledCount: 0,
-		usesSubDevices: true,
-		subdevices: [
-			{
-				name: "RGBIC TV Light Bars Top",
-				ledCount: 6,
-				size: [1, 6],
-				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6"],
-				ledPositions: [[0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9]],
-			},
-			{
-				name: "RGBIC TV Light Bars Right",
-				ledCount: 4,
-				size: [1, 4],
-				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4"],
-				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3]],
-			},
-			{
-				name: "RGBIC TV Light Bars Bottom",
-				ledCount: 6,
-				size: [1, 6],
-				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4", "Led 5", "Led 6"],
-				ledPositions: [[0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9]],
-			},
-			{
-				name: "RGBIC TV Light Bars Left",
-				ledCount: 4,
-				size: [1, 4],
-				ledNames: ["Led 1", "Led 2", "Led 3", "Led 4"],
-				ledPositions: [[0, 0], [0, 1], [0, 2], [0, 3]],
-			},
-		]
-	},
+  name: "RGBIC TV Backlight (20-seg proxy)",
+  deviceImage: "https://assets.signalrgb.com/devices/brands/govee/wifi/h6168.png",
+  sku: "H6168",
+  state: 1,
+  supportRazer: true,
+  supportDreamView: true,
+  ledCount: 0,
+  usesSubDevices: true,
+  subdevices: [
+    {
+      name: "Top",
+      ledCount: 6,
+      size: [1, 6],
+      ledNames: ["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6"],
+      ledPositions: [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]],
+    },
+    {
+      name: "Right",
+      ledCount: 4,
+      size: [1, 4],
+      ledNames: ["Led 1","Led 2","Led 3","Led 4"],
+      ledPositions: [[0,0],[0,1],[0,2],[0,3]],
+    },
+    {
+      name: "Bottom",
+      ledCount: 6,
+      size: [1, 6],
+      ledNames: ["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6"],
+      ledPositions: [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]],
+    },
+    {
+      name: "Left",
+      ledCount: 4,
+      size: [1, 4],
+      ledNames: ["Led 1","Led 2","Led 3","Led 4"],
+      ledPositions: [[0,0],[0,1],[0,2],[0,3]],
+    },
+  ]
+},
 	H7075: {
 		name: "Govee Outdoor Wall Light, 1500LM",
 		deviceImage: "https://assets.signalrgb.com/devices/brands/govee/wifi/h7075.png",
@@ -1571,6 +1571,7 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
 
 
