@@ -1542,33 +1542,13 @@ const GoveeDeviceLibrary = {
   ledCount: 0,
   usesSubDevices: true,
   subdevices: [
-    {
-      name: "Top",
-      ledCount: 6,
-      size: [1, 6],
-      ledNames: ["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6"],
-      ledPositions: [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]],
+    { name:"Segment A", ledCount:10, size:[1,10],
+      ledNames:["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6","Led 7","Led 8","Led 9","Led 10"],
+      ledPositions:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,9]],
     },
-    {
-      name: "Right",
-      ledCount: 4,
-      size: [1, 4],
-      ledNames: ["Led 1","Led 2","Led 3","Led 4"],
-      ledPositions: [[0,0],[0,1],[0,2],[0,3]],
-    },
-    {
-      name: "Bottom",
-      ledCount: 6,
-      size: [1, 6],
-      ledNames: ["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6"],
-      ledPositions: [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]],
-    },
-    {
-      name: "Left",
-      ledCount: 4,
-      size: [1, 4],
-      ledNames: ["Led 1","Led 2","Led 3","Led 4"],
-      ledPositions: [[0,0],[0,1],[0,2],[0,3]],
+    { name:"Segment B", ledCount:10, size:[1,10],
+      ledNames:["Led 1","Led 2","Led 3","Led 4","Led 5","Led 6","Led 7","Led 8","Led 9","Led 10"],
+      ledPositions:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,9]],
     },
   ]
 },
@@ -1673,6 +1653,7 @@ const GoveeDeviceLibrary = {
 		ledCount: 20
 	},
 };
+
 
 
 
